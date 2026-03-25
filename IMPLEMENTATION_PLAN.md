@@ -11,8 +11,8 @@ Items ordered by build priority (dependencies first).
 - [x] Implement `POST /api/chat` endpoint with streaming SSE response (accepts conversation history, streams back LLM reply)
 
 ## 2. Backend file and URL handling
-- [ ] Handle file/image uploads (multipart) and pass to LLM as context (base64 for images, text extraction for documents)
-- [ ] Handle product website URL input (pass as context to LLM; optionally scrape/summarize the page)
+- [x] Handle file/image uploads (multipart) and pass to LLM as context (base64 for images, text extraction for documents)
+- [x] Handle product website URL input (pass as context to LLM; optionally scrape/summarize the page)
 
 ## 3. Frontend scaffold and chat UI
 - [ ] Scaffold Next.js app (`frontend/`) with App Router, `Dockerfile`, and `package.json`
