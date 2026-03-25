@@ -15,16 +15,16 @@ Items ordered by build priority (dependencies first).
 - [x] Handle product website URL input (pass as context to LLM; optionally scrape/summarize the page)
 
 ## 3. Frontend scaffold and chat UI
-- [ ] Scaffold Next.js app (`frontend/`) with App Router, `Dockerfile`, and `package.json`
-- [ ] Configure `NEXT_PUBLIC_API_URL` env var (default `http://localhost:8000`)
-- [ ] Build single-page chat UI: message list, text input area, send button
-- [ ] Implement streaming response handling (SSE from backend, incremental rendering)
-- [ ] Render assistant messages with Markdown formatting
-- [ ] Wire up POST to backend `/api/chat` with conversation history
+- [x] Scaffold Next.js app (`frontend/`) with App Router, `Dockerfile`, and `package.json`
+- [x] Configure `NEXT_PUBLIC_API_URL` env var (default `http://localhost:8000`)
+- [x] Build single-page chat UI: message list, text input area, send button
+- [x] Implement streaming response handling (SSE from backend, incremental rendering)
+- [x] Render assistant messages with Markdown formatting
+- [x] Wire up POST to backend `/api/chat` with conversation history
 
 ## 4. Frontend inputs (URL and file uploads)
-- [ ] Add URL input field for company product website
-- [ ] Add file/image upload controls and send attachments with chat request
+- [x] Add URL input field for company product website
+- [x] Add file/image upload controls and send attachments with chat request
 
 ## 5. Infrastructure and packaging
 - [ ] Create `.env.example` with `OPENAI_API_KEY` placeholder
