@@ -3,12 +3,12 @@
 Items ordered by build priority (dependencies first).
 
 ## 1. Backend scaffold and core API
-- [ ] Scaffold FastAPI project (`backend/`) with `requirements.txt` and `Dockerfile`
-- [ ] Add CORS middleware allowing frontend origin
-- [ ] Implement `GET /health` endpoint
-- [ ] Write system prompt encoding demo script best practices (3 Key Ideas, Tell-Show-Tell, limbic opening, story elements, key visuals/data points, user persona/benefit). Prompt should instruct the LLM to ask clarifying questions before generating the final script.
-- [ ] Integrate OpenAI client with streaming completions
-- [ ] Implement `POST /api/chat` endpoint with streaming SSE response (accepts conversation history, streams back LLM reply)
+- [x] Scaffold FastAPI project (`backend/`) with `requirements.txt` and `Dockerfile`
+- [x] Add CORS middleware allowing frontend origin
+- [x] Implement `GET /health` endpoint
+- [x] Write system prompt encoding demo script best practices (3 Key Ideas, Tell-Show-Tell, limbic opening, story elements, key visuals/data points, user persona/benefit). Prompt should instruct the LLM to ask clarifying questions before generating the final script.
+- [x] Integrate OpenAI client with streaming completions
+- [x] Implement `POST /api/chat` endpoint with streaming SSE response (accepts conversation history, streams back LLM reply)
 
 ## 2. Backend file and URL handling
 - [ ] Handle file/image uploads (multipart) and pass to LLM as context (base64 for images, text extraction for documents)
