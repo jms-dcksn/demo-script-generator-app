@@ -27,6 +27,6 @@ Items ordered by build priority (dependencies first).
 - [x] Add file/image upload controls and send attachments with chat request
 
 ## 5. Infrastructure and packaging
-- [ ] Create `.env.example` with `OPENAI_API_KEY` placeholder
-- [ ] Create `docker-compose.yml` (frontend on port 3000, backend on port 8000, env passthrough)
-- [ ] Create `start.sh` and `stop.sh` scripts for Mac
+- [x] Create `.env.example` with `OPENAI_API_KEY` placeholder
+- [x] Create `docker-compose.yml` (frontend on port 3000, backend on port 8000, env passthrough)
+- [x] Create `start.sh` and `stop.sh` scripts for Mac
