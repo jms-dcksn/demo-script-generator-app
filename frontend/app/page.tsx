@@ -137,32 +137,50 @@ export default function Home() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const isLoadingLast = (i: number) =>
+    loading && i === messages.length - 1;
+
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={styles.title}>Demo Script Generator</h1>
-        <p style={styles.subtitle}>
+    <div className="app-container">
+      <header className="app-header">
+        <h1 className="app-title">Demo Script Generator</h1>
+        <p className="app-subtitle">
           Create structured demo scripts for your products
         </p>
       </header>
 
       {/* URL input bar */}
-      <div style={styles.urlBar}>
+      <div className="url-bar">
         <input
           type="url"
           placeholder="Product website URL (optional)"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          style={styles.urlInput}
+          className="url-input"
         />
       </div>
 
       {/* Message list */}
-      <div style={styles.messageArea}>
+      <div className="message-area">
         {messages.length === 0 && (
-          <div style={styles.emptyState}>
-            <p style={styles.emptyTitle}>Start a conversation</p>
-            <p style={styles.emptyText}>
+          <div className="empty-state">
+            <div className="empty-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+                />
+              </svg>
+            </div>
+            <p className="empty-title">Start a conversation</p>
+            <p className="empty-text">
               Describe your product and the demo you want to create. You can
               paste a product URL above or attach files below.
             </p>
@@ -171,27 +189,25 @@ export default function Home() {
         {messages.map((msg, i) => (
           <div
             key={i}
-            style={{
-              ...styles.messageBubbleRow,
-              justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-            }}
+            className={`message-row ${msg.role}`}
           >
-            <div
-              style={{
-                ...styles.messageBubble,
-                ...(msg.role === "user"
-                  ? styles.userBubble
-                  : styles.assistantBubble),
-              }}
-            >
+            <div className={`message-bubble ${msg.role}`}>
               {msg.role === "assistant" ? (
-                <div style={styles.markdown}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {msg.content || (loading && i === messages.length - 1 ? "..." : "")}
-                  </ReactMarkdown>
-                </div>
+                !msg.content && isLoadingLast(i) ? (
+                  <div className="loading-dots">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                ) : (
+                  <div className="markdown-body">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                )
               ) : (
-                <p style={styles.messageText}>{msg.content}</p>
+                <p className="message-text">{msg.content}</p>
               )}
             </div>
           </div>
@@ -201,13 +217,13 @@ export default function Home() {
 
       {/* File chips */}
       {files.length > 0 && (
-        <div style={styles.fileChips}>
+        <div className="file-chips">
           {files.map((f, i) => (
-            <span key={i} style={styles.chip}>
+            <span key={i} className="chip">
               {f.name}
               <button
                 onClick={() => removeFile(i)}
-                style={styles.chipRemove}
+                className="chip-remove"
                 aria-label={`Remove ${f.name}`}
               >
                 x
@@ -218,10 +234,10 @@ export default function Home() {
       )}
 
       {/* Input area */}
-      <div style={styles.inputArea}>
+      <div className="input-area">
         <button
           onClick={() => fileInputRef.current?.click()}
-          style={styles.attachButton}
+          className="attach-button"
           title="Attach files"
         >
           +
@@ -244,15 +260,12 @@ export default function Home() {
           onKeyDown={handleKeyDown}
           placeholder="Describe your product or demo goals..."
           rows={1}
-          style={styles.textInput}
+          className="text-input"
         />
         <button
           onClick={sendMessage}
           disabled={loading || (!input.trim() && files.length === 0)}
-          style={{
-            ...styles.sendButton,
-            opacity: loading || (!input.trim() && files.length === 0) ? 0.5 : 1,
-          }}
+          className="send-button"
         >
           Send
         </button>
@@ -260,153 +273,3 @@ export default function Home() {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100vh",
-    maxWidth: 800,
-    margin: "0 auto",
-    padding: "0 16px",
-  },
-  header: {
-    textAlign: "center",
-    padding: "24px 0 8px",
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 700,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "var(--text-secondary)",
-    marginTop: 4,
-  },
-  urlBar: {
-    padding: "8px 0",
-  },
-  urlInput: {
-    width: "100%",
-    padding: "10px 14px",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    fontSize: 14,
-    outline: "none",
-    background: "var(--input-bg)",
-  },
-  messageArea: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "12px 0",
-  },
-  emptyState: {
-    textAlign: "center",
-    marginTop: 80,
-    color: "var(--text-secondary)",
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: 600,
-    marginBottom: 8,
-    color: "var(--text)",
-  },
-  emptyText: {
-    fontSize: 14,
-    maxWidth: 400,
-    margin: "0 auto",
-    lineHeight: 1.5,
-  },
-  messageBubbleRow: {
-    display: "flex",
-    marginBottom: 12,
-  },
-  messageBubble: {
-    maxWidth: "80%",
-    padding: "10px 16px",
-    borderRadius: "var(--radius)",
-    fontSize: 15,
-    lineHeight: 1.6,
-  },
-  userBubble: {
-    background: "var(--user-bg)",
-    color: "var(--user-text)",
-  },
-  assistantBubble: {
-    background: "var(--assistant-bg)",
-    color: "var(--assistant-text)",
-  },
-  messageText: {
-    whiteSpace: "pre-wrap",
-    margin: 0,
-  },
-  markdown: {
-    lineHeight: 1.6,
-  },
-  fileChips: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-    padding: "4px 0",
-  },
-  chip: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    background: "var(--assistant-bg)",
-    borderRadius: 8,
-    padding: "4px 10px",
-    fontSize: 13,
-  },
-  chipRemove: {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    fontSize: 13,
-    color: "var(--text-secondary)",
-    padding: 0,
-  },
-  inputArea: {
-    display: "flex",
-    alignItems: "flex-end",
-    gap: 8,
-    padding: "12px 0 24px",
-    borderTop: "1px solid var(--border)",
-  },
-  attachButton: {
-    width: 40,
-    height: 40,
-    borderRadius: "50%",
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-    fontSize: 20,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  textInput: {
-    flex: 1,
-    padding: "10px 14px",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    fontSize: 15,
-    outline: "none",
-    resize: "none",
-    fontFamily: "inherit",
-    lineHeight: 1.5,
-    background: "var(--input-bg)",
-  },
-  sendButton: {
-    padding: "10px 20px",
-    borderRadius: "var(--radius)",
-    border: "none",
-    background: "var(--accent)",
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: 600,
-    cursor: "pointer",
-    flexShrink: 0,
-  },
-};

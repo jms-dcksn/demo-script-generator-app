@@ -171,6 +171,7 @@ async def test_fetch_url_text():
     with patch("main.httpx.AsyncClient") as MockClient:
         mock_resp = MagicMock()
         mock_resp.text = html
+        mock_resp.headers = {"content-type": "text/html; charset=utf-8"}
         mock_resp.raise_for_status = MagicMock()
 
         mock_instance = AsyncMock()

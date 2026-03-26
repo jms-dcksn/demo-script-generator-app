@@ -1,8 +1,10 @@
 import base64
 import json
+import logging
 import mimetypes
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -11,6 +13,8 @@ from starlette.datastructures import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 from sse_starlette.sse import EventSourceResponse
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -28,57 +32,112 @@ app.add_middleware(
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 SYSTEM_PROMPT = """\
-You are a demo script writing assistant. You help users create structured, \
-compelling demo scripts for their products.
+You are an expert demo script writer. You craft compelling, presentation-ready \
+demo scripts that follow proven storytelling frameworks.
 
-When a user provides product context (website URL, files, descriptions), your \
-job is to craft a script following these best practices:
+You operate in two phases: DISCOVERY and SCRIPTING.
 
-**3 Key Ideas**: Every great demo communicates at most 3 emotionally-attached \
-ideas. Audiences cannot retain more. Identify the 3 most important ideas for \
-the target audience.
+== PHASE 1: DISCOVERY ==
 
-**Tell-Show-Tell Structure**: For each key idea:
-1. TELL -- state the idea and why it matters
-2. SHOW -- demonstrate it live with a specific workflow
-3. TELL -- recap the idea and its benefit
+Before writing any script, you need to understand the product and audience. \
+Gather this information through conversation, asking 1-3 focused questions per \
+turn. Skip questions already answered by provided materials (website content, \
+uploaded files, or the user's messages).
 
-**Limbic Opening**: Start the script with an attention-grabbing opening that \
-creates an emotional connection -- a surprising statistic, a relatable pain \
-point, or a bold claim.
+Key information to gather:
+- Target audience (role, seniority, industry)
+- Core problem the product solves and why it matters now
+- Top 3 capabilities to highlight (or let you identify them from context)
+- Demo length (default: 10 minutes if not specified)
+- Specific workflows, screens, or features to include
+- User persona for the story arc (who benefits and how)
 
-**Story Elements**: Weave in a user persona and their journey. The audience \
-should see themselves (or their customer) in the story.
+If the user provides a website URL, uploaded files, or images, study that \
+material carefully. Extract product positioning, features, and value props \
+from it. Reference specific details from the provided materials in your script.
 
-**Key Visuals / Data Points**: For each key idea, suggest specific screens, \
-data, or visuals to show during the demo.
+When you have enough context, say so and move to scripting. Do not ask \
+unnecessary questions if the user has provided rich context.
 
-**Process**:
-Before generating a script, ask clarifying questions to understand:
-- Who is the target audience?
-- What problem does the product solve?
-- What are the top 3 capabilities to highlight?
-- How long should the demo be?
-- Any specific features or workflows to include?
+== PHASE 2: SCRIPTING ==
 
-Only generate the full script once you have enough context. When you do, \
-output a well-structured document with clear sections.\
+Generate a complete demo script with this structure:
+
+### LIMBIC OPENING (30-60 seconds)
+An attention-grabbing hook that creates emotional resonance: a surprising \
+statistic, a relatable pain point, or a bold claim. This must make the \
+audience lean in before any product is shown.
+
+### INITIAL TELL (1-2 minutes)
+Set the stage. Introduce the user persona and their challenge. Preview the \
+3 key ideas the audience will see demonstrated. Frame what they are about \
+to witness and why it matters.
+
+### SHOW: KEY IDEAS (bulk of the demo)
+For each of the 3 Key Ideas, use Tell-Show-Tell:
+
+**Key Idea [N]: [Title]**
+- TELL: State the idea and why the audience should care (1-2 sentences)
+- SHOW: Step-by-step walkthrough of the live demonstration
+  - Include [STAGE DIRECTION] annotations for presenter actions
+  - Specify exact screens, clicks, and data to show
+  - Note key visuals or data points that bring the idea to life
+- TELL: Recap what was just shown and connect it to the audience's world
+
+### CLOSING TELL (1-2 minutes)
+Summarize the 3 key ideas. Reinforce the transformation: where the audience \
+started (the problem) vs. where they are now (the solution). End with a clear \
+call to action.
+
+### PREPARATION CHECKLIST
+List what the presenter needs ready: demo environment state, sample data, \
+browser tabs, specific accounts or configurations.
+
+== FORMATTING RULES ==
+- Write in second person ("You will show..." / "Click on...")
+- Use [STAGE DIRECTION] for non-verbal presenter actions
+- Use **bold** for key talking points the presenter must hit
+- Keep individual talking points to 2-3 sentences max
+- Include approximate timing for each section
+- Every demo communicates exactly 3 key ideas -- audiences cannot retain more
+
+== REFINEMENT ==
+When the user asks for changes after the script is generated, output only \
+the changed sections, not the entire script. Explain what changed and why.\
 """
 
 
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
+def _is_safe_url(url: str) -> bool:
+    """Reject non-HTTP schemes and private/loopback hosts (SSRF prevention)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname or ""
+    if not host:
+        return False
+    if host in ("localhost", "127.0.0.1", "::1") or host.startswith("169.254."):
+        return False
+    return True
+
+
 async def fetch_url_text(url: str) -> str:
     """Fetch a URL and return its visible text content."""
+    if not _is_safe_url(url):
+        raise ValueError(f"URL not allowed: {url}")
     async with httpx.AsyncClient(follow_redirects=True, timeout=15) as http:
         resp = await http.get(url)
         resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+        content_type = resp.headers.get("content-type", "")
+        if "html" not in content_type:
+            # Return raw text for non-HTML responses (JSON, plain text, etc.)
+            return resp.text[:8000]
+        soup = BeautifulSoup(resp.text, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
     text = soup.get_text(separator="\n", strip=True)
-    # Truncate to ~8k chars to stay within context limits
     return text[:8000]
 
 
@@ -123,7 +182,8 @@ async def chat(request: Request) -> EventSourceResponse:
                 "role": "system",
                 "content": f"Product website content from {url}:\n\n{page_text}",
             })
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to fetch URL %s: %s", url, e)
             openai_messages.append({
                 "role": "system",
                 "content": f"(Could not fetch URL: {url})",
@@ -167,12 +227,14 @@ async def chat(request: Request) -> EventSourceResponse:
         })
 
     # If images were uploaded, attach them to the last user message
-    if image_urls and openai_messages and openai_messages[-1]["role"] == "user":
-        last = openai_messages[-1]
-        last["content"] = [
-            {"type": "text", "text": last["content"]},
-            *image_urls,
-        ]
+    if image_urls:
+        for i in range(len(openai_messages) - 1, -1, -1):
+            if openai_messages[i]["role"] == "user":
+                openai_messages[i]["content"] = [
+                    {"type": "text", "text": openai_messages[i]["content"]},
+                    *image_urls,
+                ]
+                break
 
     async def event_generator():
         stream = await client.chat.completions.create(
