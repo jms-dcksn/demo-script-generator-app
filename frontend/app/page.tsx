@@ -14,11 +14,12 @@ interface Message {
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [url, setUrl] = useState("");
+  const [urls, setUrls] = useState<string[]>([""]);
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,14 +37,16 @@ export default function Home() {
     setLoading(true);
 
     // Build request body
-    const hasAttachments = files.length > 0 || url.trim();
+    const nonEmptyUrls = urls.map((u) => u.trim()).filter(Boolean);
+    const hasAttachments = files.length > 0 || nonEmptyUrls.length > 0;
     let body: FormData | string;
     const headers: Record<string, string> = {};
 
     if (hasAttachments) {
       const fd = new FormData();
       fd.append("messages", JSON.stringify(history));
-      if (url.trim()) fd.append("url", url.trim());
+      if (nonEmptyUrls.length > 0)
+        fd.append("urls", JSON.stringify(nonEmptyUrls));
       files.forEach((f) => fd.append("files", f));
       body = fd;
     } else {
@@ -51,18 +54,24 @@ export default function Home() {
       headers["Content-Type"] = "application/json";
     }
 
-    // Clear file state after sending
+    // Clear attachments after sending (URL context is one-time)
+    setUrls([""]);
     setFiles([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     // Add placeholder assistant message
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers,
         body,
+        signal: controller.signal,
       });
 
       if (!resp.ok || !resp.body) {
@@ -124,7 +133,7 @@ export default function Home() {
     }
 
     setLoading(false);
-  }, [input, url, files, messages, loading]);
+  }, [input, urls, files, messages, loading]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -140,6 +149,16 @@ export default function Home() {
   const isLoadingLast = (i: number) =>
     loading && i === messages.length - 1;
 
+  const exportMessage = (content: string) => {
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "demo-script.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="app-container">
       <header className="app-header">
@@ -151,13 +170,36 @@ export default function Home() {
 
       {/* URL input bar */}
       <div className="url-bar">
-        <input
-          type="url"
-          placeholder="Product website URL (optional)"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="url-input"
-        />
+        {urls.map((u, i) => (
+          <div key={i} className="url-row">
+            <input
+              type="url"
+              placeholder="Product website URL (optional)"
+              value={u}
+              onChange={(e) => {
+                const next = [...urls];
+                next[i] = e.target.value;
+                setUrls(next);
+              }}
+              className="url-input"
+            />
+            {i > 0 && (
+              <button
+                className="url-remove"
+                onClick={() => setUrls(urls.filter((_, j) => j !== i))}
+                aria-label="Remove URL"
+              >
+                x
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          className="url-add"
+          onClick={() => setUrls([...urls, ""])}
+        >
+          + Add another URL
+        </button>
       </div>
 
       {/* Message list */}
@@ -204,6 +246,15 @@ export default function Home() {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {msg.content}
                     </ReactMarkdown>
+                    {msg.content.length > 500 && !isLoadingLast(i) && (
+                      <button
+                        className="export-button"
+                        onClick={() => exportMessage(msg.content)}
+                        title="Export as .txt"
+                      >
+                        Export
+                      </button>
+                    )}
                   </div>
                 )
               ) : (

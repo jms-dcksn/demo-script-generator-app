@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sse_starlette.sse import AppStatus
 
-from main import app, fetch_url_text
+from main import app, fetch_url_text, _is_safe_url
 
 
 @pytest.fixture
@@ -185,3 +185,56 @@ async def test_fetch_url_text():
     assert "Hello" in result
     assert "<script>" not in result
     assert "body{}" not in result
+
+
+def test_is_safe_url_rejects_unsafe():
+    """SSRF prevention: reject private/loopback hosts and non-HTTP schemes."""
+    assert not _is_safe_url("file:///etc/passwd")
+    assert not _is_safe_url("ftp://example.com")
+    assert not _is_safe_url("http://localhost:8000")
+    assert not _is_safe_url("http://127.0.0.1/admin")
+    assert not _is_safe_url("http://169.254.169.254/latest/meta-data/")
+    assert not _is_safe_url("http://::1/")
+    assert not _is_safe_url("")
+    assert not _is_safe_url("not-a-url")
+
+
+def test_is_safe_url_allows_valid():
+    """Public HTTP/HTTPS URLs should be allowed."""
+    assert _is_safe_url("https://example.com")
+    assert _is_safe_url("http://example.com/page")
+    assert _is_safe_url("https://www.company.com/product")
+
+
+@pytest.mark.anyio
+async def test_fetch_url_text_rejects_unsafe_url():
+    """fetch_url_text raises ValueError for unsafe URLs."""
+    with pytest.raises(ValueError, match="URL not allowed"):
+        await fetch_url_text("http://localhost:8000")
+
+
+@pytest.mark.anyio
+async def test_chat_with_multiple_urls():
+    """Multiple URLs are fetched concurrently and injected as separate system messages."""
+    ctx, stream = _mock_openai_stream("OK")
+
+    with ctx as mock_client, patch("main.fetch_url_text", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.side_effect = lambda u: f"Content from {u}"
+        mock_client.chat.completions.create = AsyncMock(return_value=stream)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            response = await ac.post(
+                "/api/chat",
+                json={
+                    "messages": [{"role": "user", "content": "Hi"}],
+                    "urls": ["https://example.com", "https://other.com"],
+                },
+            )
+
+        assert response.status_code == 200
+        call_args = mock_client.chat.completions.create.call_args
+        msgs = call_args.kwargs["messages"]
+        url_msgs = [m for m in msgs if "Product website content" in str(m.get("content", ""))]
+        assert len(url_msgs) == 2

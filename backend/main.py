@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -56,8 +57,20 @@ If the user provides a website URL, uploaded files, or images, study that \
 material carefully. Extract product positioning, features, and value props \
 from it. Reference specific details from the provided materials in your script.
 
-When you have enough context, say so and move to scripting. Do not ask \
-unnecessary questions if the user has provided rich context.
+CRITICAL TRANSITION RULES:
+- Discovery should last at most 2-4 exchanges. Do NOT keep asking questions \
+beyond that. Once you have a reasonable picture, move to scripting immediately.
+- If the user provides rich context upfront (e.g., a website URL with product \
+details plus a description of their goals), skip discovery entirely and go \
+straight to generating the script.
+- When you decide you have enough context, do NOT ask for permission to proceed. \
+Do NOT say "I'm ready to write the script" and wait. Instead, briefly state \
+what you gathered (2-3 sentences max) and then IMMEDIATELY generate the full \
+script in the same response.
+- You can always make reasonable assumptions for missing details (use defaults \
+like 10-minute length, general business audience) and note your assumptions \
+at the top of the script. It is always better to produce a script that can be \
+refined than to keep asking questions.
 
 == PHASE 2: SCRIPTING ==
 
@@ -162,32 +175,49 @@ async def chat(request: Request) -> EventSourceResponse:
         form = await request.form()
         raw_messages = form.get("messages", "")
         msg_list = json.loads(raw_messages) if raw_messages else []  # type: ignore[arg-type]
-        url = str(form.get("url", ""))
+        raw_urls = str(form.get("urls", ""))
+        urls: list[str] = json.loads(raw_urls) if raw_urls else []
+        # Backward compat: single "url" field
+        single_url = str(form.get("url", ""))
+        if single_url and not urls:
+            urls = [single_url]
         uploaded_files = [v for v in form.getlist("files") if isinstance(v, UploadFile)]
     else:
         body: dict[str, Any] = await request.json()
         msg_list = body.get("messages", [])
-        url = body.get("url", "")
+        urls = body.get("urls", [])
+        # Backward compat: single "url" field
+        single_url = body.get("url", "")
+        if single_url and not urls:
+            urls = [single_url]
 
     # Build OpenAI messages
     openai_messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT}
     ]
 
-    # Inject URL context if provided
-    if url:
-        try:
-            page_text = await fetch_url_text(url)
-            openai_messages.append({
-                "role": "system",
-                "content": f"Product website content from {url}:\n\n{page_text}",
-            })
-        except Exception as e:
-            logger.warning("Failed to fetch URL %s: %s", url, e)
-            openai_messages.append({
-                "role": "system",
-                "content": f"(Could not fetch URL: {url})",
-            })
+    # Fetch all URLs concurrently
+    if urls:
+        async def _fetch_one(u: str) -> tuple[str, str | None]:
+            try:
+                text = await fetch_url_text(u)
+                return (u, text)
+            except Exception as e:
+                logger.warning("Failed to fetch URL %s: %s", u, e)
+                return (u, None)
+
+        results = await asyncio.gather(*[_fetch_one(u) for u in urls])
+        for fetched_url, page_text in results:
+            if page_text is not None:
+                openai_messages.append({
+                    "role": "system",
+                    "content": f"Product website content from {fetched_url}:\n\n{page_text}",
+                })
+            else:
+                openai_messages.append({
+                    "role": "system",
+                    "content": f"(Could not fetch URL: {fetched_url})",
+                })
 
     # Process file uploads into context
     file_context_parts: list[str] = []

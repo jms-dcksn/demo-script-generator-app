@@ -86,10 +86,19 @@ body {
 .url-bar {
   padding: 6px 0 4px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.url-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .url-input {
-  width: 100%;
+  flex: 1;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -109,6 +118,46 @@ body {
 .url-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.url-remove {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+}
+
+.url-remove:hover {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.url-add {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color var(--transition);
+}
+
+.url-add:hover {
+  color: var(--accent-hover);
 }
 
 /* ---- Message Area ---- */
