@@ -81,6 +81,13 @@ body {
   font-weight: 450;
 }
 
+.usage-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  font-weight: 450;
+}
+
 /* ---- URL Bar ---- */
 
 .url-bar {

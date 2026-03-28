@@ -17,9 +17,22 @@ export default function Home() {
   const [urls, setUrls] = useState<string[]>([""]);
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
+  const [rateLimited, setRateLimited] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Fetch usage on mount
+  useEffect(() => {
+    fetch(`${API_URL}/api/usage`)
+      .then((r) => r.json())
+      .then((data) => {
+        setRemaining(data.remaining);
+        if (data.remaining <= 0) setRateLimited(true);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -73,6 +86,22 @@ export default function Home() {
         body,
         signal: controller.signal,
       });
+
+      if (resp.status === 429) {
+        setRateLimited(true);
+        setRemaining(0);
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: "assistant",
+            content:
+              "You've reached the free demo limit. Thanks for trying it out!",
+          };
+          return updated;
+        });
+        setLoading(false);
+        return;
+      }
 
       if (!resp.ok || !resp.body) {
         setMessages((prev) => {
@@ -132,6 +161,16 @@ export default function Home() {
       });
     }
 
+    // Refresh usage count
+    try {
+      const usage = await fetch(`${API_URL}/api/usage`);
+      const data = await usage.json();
+      setRemaining(data.remaining);
+      if (data.remaining <= 0) setRateLimited(true);
+    } catch {
+      // ignore
+    }
+
     setLoading(false);
   }, [input, urls, files, messages, loading]);
 
@@ -166,6 +205,13 @@ export default function Home() {
         <p className="app-subtitle">
           Create structured demo scripts for your products
         </p>
+        {remaining !== null && (
+          <p className="usage-note">
+            {rateLimited
+              ? "You've used your free demo. Thanks for trying it out!"
+              : `Free demo -- ${remaining} message${remaining === 1 ? "" : "s"} remaining`}
+          </p>
+        )}
       </header>
 
       {/* URL input bar */}
@@ -315,7 +361,7 @@ export default function Home() {
         />
         <button
           onClick={sendMessage}
-          disabled={loading || (!input.trim() && files.length === 0)}
+          disabled={loading || rateLimited || (!input.trim() && files.length === 0)}
           className="send-button"
         >
           Send

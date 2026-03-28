@@ -4,12 +4,14 @@ import json
 import logging
 import mimetypes
 import os
+from collections import defaultdict
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from starlette.datastructures import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
@@ -18,6 +20,18 @@ from sse_starlette.sse import EventSourceResponse
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# In-memory rate limiting by IP
+MAX_MESSAGES_PER_IP = int(os.getenv("MAX_MESSAGES_PER_IP", "20"))
+_ip_usage: dict[str, int] = defaultdict(int)
+
+
+def _client_ip(request: Request) -> str:
+    """Extract client IP using Fly's trusted header, falling back for local dev."""
+    fly_ip = request.headers.get("fly-client-ip")
+    if fly_ip:
+        return fly_ip.strip()
+    return request.client.host if request.client else "unknown"
 
 app.add_middleware(
     CORSMiddleware,
@@ -166,8 +180,21 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/usage")
+async def usage(request: Request) -> dict[str, int]:
+    ip = _client_ip(request)
+    used = _ip_usage[ip]
+    return {"used": used, "limit": MAX_MESSAGES_PER_IP, "remaining": max(0, MAX_MESSAGES_PER_IP - used)}
+
+
 @app.post("/api/chat")
-async def chat(request: Request) -> EventSourceResponse:
+async def chat(request: Request) -> EventSourceResponse | JSONResponse:
+    ip = _client_ip(request)
+    if _ip_usage[ip] >= MAX_MESSAGES_PER_IP:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "You've reached the free demo limit. Thanks for trying it out!"},
+        )
     content_type = request.headers.get("content-type", "")
 
     uploaded_files: list[UploadFile] = []
@@ -265,6 +292,8 @@ async def chat(request: Request) -> EventSourceResponse:
                     *image_urls,
                 ]
                 break
+
+    _ip_usage[ip] += 1
 
     async def event_generator():
         stream = await client.chat.completions.create(
