@@ -187,7 +187,7 @@ async def usage(request: Request) -> dict[str, int]:
     return {"used": used, "limit": MAX_MESSAGES_PER_IP, "remaining": max(0, MAX_MESSAGES_PER_IP - used)}
 
 
-@app.post("/api/chat")
+@app.post("/api/chat", response_model=None)
 async def chat(request: Request) -> EventSourceResponse | JSONResponse:
     ip = _client_ip(request)
     if _ip_usage[ip] >= MAX_MESSAGES_PER_IP:
