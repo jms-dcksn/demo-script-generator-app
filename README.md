@@ -4,6 +4,8 @@ A chat-based web app that researches product pages, interviews users about their
 
 Built with a [Ralph Loop](https://github.com/ClaytonFarr/ralph-playbook) and Agent Teams.
 
+**Try it live:** https://demo-script-generator-app.vercel.app/
+
 ## How it works
 
 1. Provide product context -- a website URL, uploaded files, or a description
