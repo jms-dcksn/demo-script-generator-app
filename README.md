@@ -2,7 +2,7 @@
 
 A chat-based web app that researches product pages, interviews users about their product, and generates structured demo scripts for sales engineers. Scripts follow an opinionated structure built on proven frameworks (3 Key Ideas, Tell-Show-Tell, limbic opening).
 
-Built with a [Ralph Loop](https://github.com/jamesfdickson/ralph-loop) and Agent Teams.
+Built with a [Ralph Loop](https://github.com/ClaytonFarr/ralph-playbook) and Agent Teams.
 
 ## How it works
 
