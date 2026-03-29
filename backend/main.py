@@ -153,7 +153,7 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
                     stream_mode="messages",
                 ):
                     msg, metadata = chunk
-                    if isinstance(msg, AIMessageChunk) and msg.content and metadata.get("langgraph_node") == "agent":
+                    if isinstance(msg, AIMessageChunk) and msg.content and metadata.get("langgraph_node") == "model":
                         yield {"data": json.dumps({"content": msg.content})}
             except Exception as e:
                 logger.exception("Error during agent resume: %s", e)
@@ -249,7 +249,7 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
                 stream_mode="messages",
             ):
                 msg, metadata = chunk
-                if isinstance(msg, AIMessageChunk) and msg.content and metadata.get("langgraph_node") == "agent":
+                if isinstance(msg, AIMessageChunk) and msg.content and metadata.get("langgraph_node") == "model":
                     yield {"data": json.dumps({"content": msg.content})}
         except Exception as e:
             logger.exception("Error during agent stream: %s", e)
