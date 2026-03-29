@@ -11,6 +11,17 @@ interface Message {
   content: string;
 }
 
+interface ActionRequest {
+  name: string;
+  args: Record<string, string>;
+  description: string;
+}
+
+interface InterruptPayload {
+  action_requests: ActionRequest[];
+  review_configs: { action_name: string; allowed_decisions: string[] }[];
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -19,6 +30,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [rateLimited, setRateLimited] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [pendingInterrupt, setPendingInterrupt] = useState<InterruptPayload | null>(null);
+  const [editingArgs, setEditingArgs] = useState<Record<string, string> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -37,6 +51,59 @@ export default function Home() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const readStream = useCallback(
+    async (resp: Response) => {
+      const reader = resp.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") return;
+          try {
+            const parsed = JSON.parse(payload);
+            // Track thread_id from backend
+            if (parsed.thread_id && !parsed.interrupt) {
+              setThreadId(parsed.thread_id);
+              continue;
+            }
+            // Handle interrupt
+            if (parsed.interrupt) {
+              if (parsed.thread_id) setThreadId(parsed.thread_id);
+              setPendingInterrupt(parsed.interrupt);
+              setLoading(false);
+              return;
+            }
+            if (parsed.content) {
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last?.role !== "assistant") return updated;
+                updated[updated.length - 1] = {
+                  ...last,
+                  content: last.content + parsed.content,
+                };
+                return updated;
+              });
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
+      }
+    },
+    [],
+  );
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -61,13 +128,19 @@ export default function Home() {
       if (nonEmptyUrls.length > 0)
         fd.append("urls", JSON.stringify(nonEmptyUrls));
       files.forEach((f) => fd.append("files", f));
+      if (threadId) fd.append("thread_id", threadId);
+      fd.append("is_resume", "false");
       body = fd;
     } else {
-      body = JSON.stringify({ messages: history });
+      body = JSON.stringify({
+        messages: history,
+        thread_id: threadId || "",
+        is_resume: false,
+      });
       headers["Content-Type"] = "application/json";
     }
 
-    // Clear attachments after sending (URL context is one-time)
+    // Clear attachments after sending
     setUrls([""]);
     setFiles([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -116,40 +189,7 @@ export default function Home() {
         return;
       }
 
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (payload === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(payload);
-            if (parsed.content) {
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                updated[updated.length - 1] = {
-                  ...last,
-                  content: last.content + parsed.content,
-                };
-                return updated;
-              });
-            }
-          } catch {
-            // skip malformed lines
-          }
-        }
-      }
+      await readStream(resp);
     } catch {
       setMessages((prev) => {
         const updated = [...prev];
@@ -172,7 +212,68 @@ export default function Home() {
     }
 
     setLoading(false);
-  }, [input, urls, files, messages, loading]);
+  }, [input, urls, files, messages, loading, threadId, readStream]);
+
+  const handleResume = useCallback(
+    async (resumePayload: Record<string, unknown>) => {
+      if (!pendingInterrupt || !threadId) return;
+      setPendingInterrupt(null);
+      setEditingArgs(null);
+      setLoading(true);
+
+      // Add placeholder assistant message for the response
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+      try {
+        const resp = await fetch(`${API_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            thread_id: threadId,
+            is_resume: true,
+            resume_payload: resumePayload,
+          }),
+        });
+
+        if (!resp.ok || !resp.body) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              role: "assistant",
+              content: "Something went wrong resuming. Please try again.",
+            };
+            return updated;
+          });
+          setLoading(false);
+          return;
+        }
+
+        await readStream(resp);
+      } catch {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: "assistant",
+            content: "Connection error. Is the backend running?",
+          };
+          return updated;
+        });
+      }
+
+      // Refresh usage count
+      try {
+        const usage = await fetch(`${API_URL}/api/usage`);
+        const data = await usage.json();
+        setRemaining(data.remaining);
+        if (data.remaining <= 0) setRateLimited(true);
+      } catch {
+        // ignore
+      }
+
+      setLoading(false);
+    },
+    [pendingInterrupt, threadId, readStream],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -312,6 +413,96 @@ export default function Home() {
         <div ref={bottomRef} />
       </div>
 
+      {/* Interrupt approval bar */}
+      {pendingInterrupt && !editingArgs && (() => {
+        const req = pendingInterrupt.action_requests[0];
+        return (
+          <div className="interrupt-bar">
+            <p className="interrupt-description">{req.description}</p>
+            <p className="interrupt-summary">
+              {req.args.script_summary?.slice(0, 200)}
+              {(req.args.script_summary?.length ?? 0) > 200 ? "..." : ""}
+            </p>
+            <div className="interrupt-actions">
+              <button
+                className="interrupt-btn approve"
+                onClick={() =>
+                  handleResume({ decisions: [{ type: "approve" }] })
+                }
+              >
+                Approve
+              </button>
+              <button
+                className="interrupt-btn edit"
+                onClick={() => setEditingArgs({ ...req.args })}
+              >
+                Edit
+              </button>
+              <button
+                className="interrupt-btn reject"
+                onClick={() => {
+                  const feedback = prompt("Feedback for the agent:");
+                  if (feedback !== null) {
+                    handleResume({
+                      decisions: [{ type: "reject", message: feedback }],
+                    });
+                  }
+                }}
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Edit args form */}
+      {editingArgs && pendingInterrupt && (() => {
+        const req = pendingInterrupt.action_requests[0];
+        return (
+          <div className="interrupt-bar">
+            <p className="interrupt-description">Edit script parameters:</p>
+            <textarea
+              className="edit-args-input"
+              value={editingArgs.script_summary || ""}
+              onChange={(e) =>
+                setEditingArgs((prev) => ({
+                  ...prev!,
+                  script_summary: e.target.value,
+                }))
+              }
+              rows={4}
+            />
+            <div className="interrupt-actions">
+              <button
+                className="interrupt-btn approve"
+                onClick={() =>
+                  handleResume({
+                    decisions: [
+                      {
+                        type: "edit",
+                        edited_action: {
+                          name: req.name,
+                          args: editingArgs,
+                        },
+                      },
+                    ],
+                  })
+                }
+              >
+                Submit
+              </button>
+              <button
+                className="interrupt-btn reject"
+                onClick={() => setEditingArgs(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* File chips */}
       {files.length > 0 && (
         <div className="file-chips">
@@ -331,42 +522,44 @@ export default function Home() {
       )}
 
       {/* Input area */}
-      <div className="input-area">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="attach-button"
-          title="Attach files"
-        >
-          +
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*,.pdf,.txt,.md,.doc,.docx,.csv"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            if (e.target.files) {
-              setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
-            }
-          }}
-        />
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Describe your product or demo goals..."
-          rows={1}
-          className="text-input"
-        />
-        <button
-          onClick={sendMessage}
-          disabled={loading || rateLimited || (!input.trim() && files.length === 0)}
-          className="send-button"
-        >
-          Send
-        </button>
-      </div>
+      {!pendingInterrupt && (
+        <div className="input-area">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="attach-button"
+            title="Attach files"
+          >
+            +
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.txt,.md,.doc,.docx,.csv"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files) {
+                setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+              }
+            }}
+          />
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Describe your product or demo goals..."
+            rows={1}
+            className="text-input"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loading || rateLimited || (!input.trim() && files.length === 0)}
+            className="send-button"
+          >
+            Send
+          </button>
+        </div>
+      )}
     </div>
   );
 }

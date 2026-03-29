@@ -571,6 +571,100 @@ body {
   }
 }
 
+/* ---- Interrupt Bar ---- */
+
+.interrupt-bar {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--accent-light);
+  flex-shrink: 0;
+  animation: fadeIn 200ms ease-out;
+}
+
+.interrupt-description {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.interrupt-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.interrupt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.interrupt-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+    color var(--transition);
+}
+
+.interrupt-btn.approve {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.interrupt-btn.approve:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.interrupt-btn.edit {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.interrupt-btn.edit:hover {
+  background: var(--bg);
+  border-color: var(--text-tertiary);
+}
+
+.interrupt-btn.reject {
+  background: var(--surface);
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.interrupt-btn.reject:hover {
+  background: #fef2f2;
+  border-color: #dc2626;
+}
+
+.edit-args-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  margin-bottom: 10px;
+  outline: none;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color var(--transition);
+}
+
+.edit-args-input:focus {
+  border-color: var(--accent);
+}
+
 /* ---- Responsive ---- */
 
 @media (max-width: 640px) {
