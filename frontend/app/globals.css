@@ -665,6 +665,141 @@ body {
   border-color: var(--accent);
 }
 
+/* ---- Export Button ---- */
+
+.export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 550;
+  font-family: inherit;
+  cursor: pointer;
+  float: right;
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition), box-shadow var(--transition);
+}
+
+.export-button:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: var(--accent-subtle);
+  box-shadow: var(--shadow-sm);
+}
+
+.export-button svg {
+  flex-shrink: 0;
+}
+
+/* ---- Context Panel ---- */
+
+.context-panel {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 4px;
+  animation: fadeIn 200ms ease-out;
+  overflow: hidden;
+}
+
+.context-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: color var(--transition);
+}
+
+.context-toggle:hover {
+  color: var(--text);
+}
+
+.context-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-chevron {
+  transition: transform var(--transition);
+}
+
+.context-chevron.rotated {
+  transform: rotate(-90deg);
+}
+
+.context-list {
+  list-style: none;
+  padding: 0 12px 8px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background var(--transition);
+}
+
+.context-item:hover {
+  background: var(--bg);
+}
+
+.context-item-icon {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.context-item-name {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-item-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+.context-item:hover .context-item-remove {
+  opacity: 1;
+}
+
+.context-item-remove:hover {
+  color: #dc2626;
+}
+
 /* ---- Responsive ---- */
 
 @media (max-width: 640px) {

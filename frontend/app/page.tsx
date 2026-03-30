@@ -22,6 +22,24 @@ interface InterruptPayload {
   review_configs: { action_name: string; allowed_decisions: string[] }[];
 }
 
+interface ContextItem {
+  type: "url" | "file";
+  name: string;
+  addedAt: number;
+}
+
+const SCRIPT_MARKERS = [
+  /limbic opening/i,
+  /key idea/i,
+  /tell[- ]show[- ]tell/i,
+  /## (Tell|Show|Opening|Closing|Demo Flow)/i,
+];
+
+function isScriptReady(content: string): boolean {
+  if (content.length <= 500) return false;
+  return SCRIPT_MARKERS.some((re) => re.test(content));
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -33,6 +51,8 @@ export default function Home() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [pendingInterrupt, setPendingInterrupt] = useState<InterruptPayload | null>(null);
   const [editingArgs, setEditingArgs] = useState<Record<string, string> | null>(null);
+  const [attachedContext, setAttachedContext] = useState<ContextItem[]>([]);
+  const [contextCollapsed, setContextCollapsed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -138,6 +158,16 @@ export default function Home() {
         is_resume: false,
       });
       headers["Content-Type"] = "application/json";
+    }
+
+    // Accumulate context before clearing
+    const now = Date.now();
+    const newContext: ContextItem[] = [
+      ...nonEmptyUrls.map((u) => ({ type: "url" as const, name: u, addedAt: now })),
+      ...files.map((f) => ({ type: "file" as const, name: f.name, addedAt: now })),
+    ];
+    if (newContext.length > 0) {
+      setAttachedContext((prev) => [...prev, ...newContext]);
     }
 
     // Clear attachments after sending
@@ -290,17 +320,21 @@ export default function Home() {
     loading && i === messages.length - 1;
 
   const exportMessage = (content: string) => {
-    const blob = new Blob([content], { type: "text/plain" });
+    const blob = new Blob([content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "demo-script.txt";
+    a.download = "demo-script.md";
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const removeContext = (index: number) => {
+    setAttachedContext((prev) => prev.filter((_, i) => i !== index));
+  };
+
   return (
-    <div className="app-container">
+    <div className={`app-container ${attachedContext.length > 0 ? "has-context" : ""}`}>
       <header className="app-header">
         <h1 className="app-title">Demo Script Generator</h1>
         <p className="app-subtitle">
@@ -314,6 +348,76 @@ export default function Home() {
           </p>
         )}
       </header>
+
+      {/* Context panel */}
+      {attachedContext.length > 0 && (
+        <div className={`context-panel ${contextCollapsed ? "collapsed" : ""}`}>
+          <button
+            className="context-toggle"
+            onClick={() => setContextCollapsed((c) => !c)}
+          >
+            <span className="context-toggle-label">
+              Context ({attachedContext.length} item{attachedContext.length !== 1 ? "s" : ""})
+            </span>
+            <svg
+              className={`context-chevron ${contextCollapsed ? "rotated" : ""}`}
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {!contextCollapsed && (
+            <ul className="context-list">
+              {attachedContext.map((item, i) => (
+                <li key={i} className="context-item">
+                  <svg
+                    className="context-item-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    {item.type === "url" ? (
+                      <>
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </>
+                    ) : (
+                      <>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </>
+                    )}
+                  </svg>
+                  <span className="context-item-name" title={item.name}>
+                    {item.type === "url"
+                      ? item.name.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)
+                      : item.name}
+                  </span>
+                  <button
+                    className="context-item-remove"
+                    onClick={() => removeContext(i)}
+                    aria-label={`Remove ${item.name}`}
+                  >
+                    x
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* URL input bar */}
       <div className="url-bar">
@@ -393,12 +497,26 @@ export default function Home() {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {msg.content}
                     </ReactMarkdown>
-                    {msg.content.length > 500 && !isLoadingLast(i) && (
+                    {isScriptReady(msg.content) && !isLoadingLast(i) && (
                       <button
                         className="export-button"
                         onClick={() => exportMessage(msg.content)}
-                        title="Export as .txt"
+                        title="Export as .md"
                       >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
                         Export
                       </button>
                     )}
