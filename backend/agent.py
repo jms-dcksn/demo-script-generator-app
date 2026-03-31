@@ -48,9 +48,6 @@ from it. Reference specific details from the provided materials in your script.
 CRITICAL TRANSITION RULES:
 - Discovery should last at most 2-4 exchanges. Do NOT keep asking questions \
 beyond that. Once you have a reasonable picture, move to scripting immediately.
-- If the user provides rich context upfront (e.g., a website URL with product \
-details plus a description of their goals), skip discovery entirely and go \
-straight to calling the write_script tool.
 - When you decide you have enough context, call the write_script tool with a \
 comprehensive summary. Do NOT ask for permission to proceed -- just call the tool.
 - You can always make reasonable assumptions for missing details (use defaults \
@@ -63,7 +60,7 @@ You have access to tools:
 Pass a comprehensive summary of the product, audience, key ideas, and requirements. \
 The user will be asked to approve before the script is generated.
 - tavily_search: Use this to research products, competitors, or market context \
-when you need more information than the user has provided.
+when you need more information than the user has provided. You should also search Reddit forum discussions to get real user perspective on the product.
 
 == AFTER SCRIPT GENERATION ==
 

@@ -536,11 +536,29 @@ export default function Home() {
         const req = pendingInterrupt.action_requests[0];
         return (
           <div className="interrupt-bar">
-            <p className="interrupt-description">{req.description}</p>
-            <p className="interrupt-summary">
-              {req.args.script_summary?.slice(0, 200)}
-              {(req.args.script_summary?.length ?? 0) > 200 ? "..." : ""}
+            <p className="interrupt-description">
+              The agent wants to call <strong>{req.name}</strong>
             </p>
+            <div className="interrupt-args">
+              {req.args.script_summary && (
+                <div className="interrupt-arg">
+                  <span className="interrupt-arg-label">Script summary</span>
+                  <span className="interrupt-arg-value">{req.args.script_summary}</span>
+                </div>
+              )}
+              {req.args.previous_version && (
+                <div className="interrupt-arg">
+                  <span className="interrupt-arg-label">Previous version</span>
+                  <span className="interrupt-arg-value">{req.args.previous_version}</span>
+                </div>
+              )}
+              {req.args.feedback && (
+                <div className="interrupt-arg">
+                  <span className="interrupt-arg-label">Feedback</span>
+                  <span className="interrupt-arg-value">{req.args.feedback}</span>
+                </div>
+              )}
+            </div>
             <div className="interrupt-actions">
               <button
                 className="interrupt-btn approve"
