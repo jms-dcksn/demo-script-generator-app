@@ -11,6 +11,9 @@ primary_region = 'dfw'
 
 [env]
   OPENAI_MODEL = 'gpt-4.1'
+  LANGSMITH_TRACING='true'
+  LANGSMITH_ENDPOINT='https://api.smith.langchain.com'
+  LANGSMITH_PROJECT='demo-script-generator-app'
 
 [http_service]
   internal_port = 8000

@@ -1,7 +1,11 @@
 import os
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain.agents.middleware import (
+    HumanInTheLoopMiddleware,
+    ModelCallLimitMiddleware,
+    ToolCallLimitMiddleware,
+)
 from langchain.agents.middleware.types import AgentState as _BaseAgentState
 from langchain.tools import tool
 from langchain.messages import HumanMessage, SystemMessage
@@ -72,7 +76,7 @@ When the write_script tool returns a script:
 - Review it for quality and adherence to the user's requirements.
 - If the script needs improvement and you have remaining revision attempts, \
 call write_script again with the previous version and specific feedback.
-- Present the final script to the user.
+- *IMPORTANT* Present the final script to the user.
 - Maximum 3 total write_script calls per session.
 
 == REFINEMENT ==
@@ -199,6 +203,15 @@ def get_agent():
                         "allowed_decisions": ["approve", "edit", "reject"],
                     },
                 },
+            ),
+            ModelCallLimitMiddleware(
+                thread_limit=12,
+                exit_behavior="end",
+            ),
+            ToolCallLimitMiddleware(
+                tool_name="write_script",
+                thread_limit=3,
+                exit_behavior="continue",
             ),
         ],
     )
