@@ -834,6 +834,141 @@ body {
   color: #dc2626;
 }
 
+/* ---- Footer ---- */
+
+.app-footer {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 8px 0 14px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 450;
+}
+
+.footer-sep {
+  margin: 0 6px;
+  opacity: 0.4;
+}
+
+.footer-link {
+  color: var(--text-tertiary);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.footer-link:hover {
+  color: var(--accent);
+}
+
+/* ---- About Page ---- */
+
+.about-container {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+.about-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  margin-bottom: 32px;
+  transition: color var(--transition);
+}
+
+.about-back:hover {
+  color: var(--accent);
+}
+
+.about-container h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin-bottom: 8px;
+}
+
+.about-container .about-subtitle {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 36px;
+  line-height: 1.6;
+}
+
+.about-container h2 {
+  font-size: 17px;
+  font-weight: 650;
+  margin: 28px 0 10px;
+  letter-spacing: -0.2px;
+}
+
+.about-container p {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+.about-tech-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+
+.about-tech-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.about-tech-card .tech-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+
+.about-tech-card .tech-value {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--text);
+}
+
+.about-tech-card .tech-detail {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+.about-author {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-light);
+}
+
+.about-author a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-author a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .about-tech-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---- Responsive ---- */
 
 @media (max-width: 640px) {

@@ -696,6 +696,12 @@ export default function Home() {
           </button>
         </div>
       )}
+
+      <footer className="app-footer">
+        Built by James Dickson
+        <span className="footer-sep">|</span>
+        <a href="/about" className="footer-link">How this was built</a>
+      </footer>
     </div>
   );
 }
