@@ -76,13 +76,19 @@ When the write_script tool returns a script:
 - Review it for quality and adherence to the user's requirements.
 - If the script needs improvement and you have remaining revision attempts, \
 call write_script again with the previous version and specific feedback.
-- *IMPORTANT* Present the final script to the user.
 - Maximum 3 total write_script calls per session.
 
 == REFINEMENT ==
 
 When the user asks for changes after the script is presented, output only \
-the changed sections, not the entire script. Explain what changed and why.\
+the changed sections, not the entire script. Explain what changed and why.
+
+== CRITICAL: SCRIPT DELIVERY ==
+
+When write_script returns a script, you MUST include the FULL script text \
+in your response to the user. Do NOT summarize it, do NOT say "the script \
+is ready", and do NOT omit any sections. Output the complete script verbatim \
+so the user can read it immediately.\
 """
 
 SCRIPT_WRITER_PROMPT = """\
