@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import TracePanel from "./trace-panel";
+import type { TraceEvent } from "./trace-panel";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -51,6 +53,8 @@ export default function Home() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [pendingInterrupt, setPendingInterrupt] = useState<InterruptPayload | null>(null);
   const [editingArgs, setEditingArgs] = useState<Record<string, string> | null>(null);
+  const [traceEvents, setTraceEvents] = useState<TraceEvent[]>([]);
+  const [traceOpen, setTraceOpen] = useState(false);
   const [attachedContext, setAttachedContext] = useState<ContextItem[]>([]);
   const [contextCollapsed, setContextCollapsed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -95,6 +99,11 @@ export default function Home() {
             // Track thread_id from backend
             if (parsed.thread_id && !parsed.interrupt) {
               setThreadId(parsed.thread_id);
+              continue;
+            }
+            // Capture trace events
+            if (parsed.type === "trace") {
+              setTraceEvents((prev) => [...prev, { ...parsed, timestamp: Date.now() }]);
               continue;
             }
             // Handle interrupt
@@ -334,6 +343,7 @@ export default function Home() {
   };
 
   return (
+    <div className="app-layout">
     <div className={`app-container ${attachedContext.length > 0 ? "has-context" : ""}`}>
       <header className="app-header">
         <h1 className="app-title">Demo Script Generator</h1>
@@ -702,6 +712,35 @@ export default function Home() {
         <span className="footer-sep">|</span>
         <a href="/about" className="footer-link">How this was built</a>
       </footer>
+    </div>
+    <TracePanel
+      events={traceEvents}
+      isOpen={traceOpen}
+      onToggle={() => setTraceOpen((o) => !o)}
+    />
+    <button
+      className={`trace-expand-btn ${traceOpen ? "panel-open" : ""}`}
+      onClick={() => setTraceOpen((o) => !o)}
+      aria-label={traceOpen ? "Close trace panel" : "Open trace panel"}
+      title={traceOpen ? "Close trace panel" : "Open trace panel"}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ transform: traceOpen ? "rotate(180deg)" : "none", transition: "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)" }}
+      >
+        <polyline points="9 18 15 12 9 6" />
+      </svg>
+      {traceEvents.length > 0 && !traceOpen && (
+        <span className="badge" />
+      )}
+    </button>
     </div>
   );
 }

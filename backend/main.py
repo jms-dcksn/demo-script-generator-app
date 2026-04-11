@@ -13,7 +13,7 @@ import httpx
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from langchain.messages import AIMessageChunk, HumanMessage, SystemMessage
+from langchain.messages import AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
 from langgraph.types import Command
 from starlette.datastructures import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -146,6 +146,18 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
     if is_resume and resume_payload is not None:
         # Don't count resume toward rate limit
         async def resume_generator():
+            _tool_start_times: dict[str, float] = {}
+            _seen_model_ids: set[str] = set()
+            _model_calls = 0
+
+            # Emit a trace event for the resume action
+            yield {"data": json.dumps({
+                "type": "trace",
+                "event": "resume",
+                "decision": resume_payload.get("decisions", [{}])[0].get("type", "unknown"),
+                "depth": 0,
+            })}
+
             try:
                 async for chunk in agent.astream(
                     Command(resume=resume_payload),
@@ -153,8 +165,62 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
                     stream_mode="messages",
                 ):
                     msg, metadata = chunk
-                    if isinstance(msg, AIMessageChunk) and msg.content and metadata.get("langgraph_node") == "model":
+                    node = metadata.get("langgraph_node", "")
+
+                    if node not in ("model", "tools"):
+                        continue
+
+                    if isinstance(msg, AIMessageChunk) and msg.content and node == "model":
                         yield {"data": json.dumps({"content": msg.content})}
+
+                    # Trace: LLM call (deduplicate by msg.id)
+                    if isinstance(msg, AIMessageChunk) and node == "model" and msg.id:
+                        if msg.id not in _seen_model_ids:
+                            _seen_model_ids.add(msg.id)
+                            _model_calls += 1
+                            yield {"data": json.dumps({
+                                "type": "trace",
+                                "event": "llm_call",
+                                "count": _model_calls,
+                                "depth": 0,
+                            })}
+
+                    # Trace: tool call start
+                    if isinstance(msg, AIMessageChunk) and msg.tool_call_chunks and node == "model":
+                        for tc in msg.tool_call_chunks:
+                            name = tc.get("name")
+                            if name:
+                                _tool_start_times[name] = asyncio.get_event_loop().time()
+                                yield {"data": json.dumps({
+                                    "type": "trace",
+                                    "event": "tool_call_start",
+                                    "tool": name,
+                                    "args_preview": str(tc.get("args", ""))[:200],
+                                    "depth": 1,
+                                })}
+
+                    # Trace: tool result
+                    if isinstance(msg, ToolMessage) and node == "tools":
+                        tool_name = msg.name or "unknown"
+                        start = _tool_start_times.pop(tool_name, None)
+                        duration_ms = int((asyncio.get_event_loop().time() - start) * 1000) if start else None
+                        if tool_name == "write_script":
+                            yield {"data": json.dumps({
+                                "type": "trace",
+                                "event": "sub_llm_call",
+                                "tool": "write_script",
+                                "label": "Script Writer LLM",
+                                "depth": 2,
+                                "duration_ms": duration_ms,
+                            })}
+                        yield {"data": json.dumps({
+                            "type": "trace",
+                            "event": "tool_call_end",
+                            "tool": tool_name,
+                            "duration_ms": duration_ms,
+                            "depth": 1,
+                        })}
+
             except Exception as e:
                 logger.exception("Error during agent resume: %s", e)
                 yield {"data": json.dumps({"error": str(e)})}
@@ -164,6 +230,13 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
             state = agent.get_state(config)
             for task in state.tasks or []:
                 for intr in task.interrupts or []:
+                    yield {"data": json.dumps({
+                        "type": "trace",
+                        "event": "interrupt",
+                        "tool": "write_script",
+                        "status": "awaiting_approval",
+                        "depth": 1,
+                    })}
                     yield {"data": json.dumps({
                         "interrupt": intr.value,
                         "thread_id": thread_id,
@@ -242,6 +315,11 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
         # Send thread_id so frontend can track it
         yield {"data": json.dumps({"thread_id": thread_id})}
 
+        # Track tool call timing for trace events
+        _tool_start_times: dict[str, float] = {}
+        _model_calls = 0
+        _seen_model_ids: set[str] = set()
+
         try:
             async for chunk in agent.astream(
                 {"messages": input_messages},
@@ -249,8 +327,66 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
                 stream_mode="messages",
             ):
                 msg, metadata = chunk
-                if isinstance(msg, AIMessageChunk) and msg.content and metadata.get("langgraph_node") == "model":
+                node = metadata.get("langgraph_node", "")
+
+                # Only process events from core agent nodes, skip middleware
+                if node not in ("model", "tools"):
+                    continue
+
+                # Stream content from model node
+                if isinstance(msg, AIMessageChunk) and msg.content and node == "model":
                     yield {"data": json.dumps({"content": msg.content})}
+
+                # Trace: LLM call (deduplicate by msg.id)
+                if isinstance(msg, AIMessageChunk) and node == "model" and msg.id:
+                    if msg.id not in _seen_model_ids:
+                        _seen_model_ids.add(msg.id)
+                        _model_calls += 1
+                        yield {"data": json.dumps({
+                            "type": "trace",
+                            "event": "llm_call",
+                            "count": _model_calls,
+                            "depth": 0,
+                        })}
+
+                # Trace: tool call start (first chunk of a tool call has the name)
+                if isinstance(msg, AIMessageChunk) and msg.tool_call_chunks and node == "model":
+                    for tc in msg.tool_call_chunks:
+                        name = tc.get("name")
+                        if name:
+                            _tool_start_times[name] = asyncio.get_event_loop().time()
+                            args_preview = tc.get("args", "")
+                            yield {"data": json.dumps({
+                                "type": "trace",
+                                "event": "tool_call_start",
+                                "tool": name,
+                                "args_preview": str(args_preview)[:200],
+                                "depth": 1,
+                            })}
+
+                # Trace: tool result
+                if isinstance(msg, ToolMessage) and node == "tools":
+                    tool_name = msg.name or "unknown"
+                    start = _tool_start_times.pop(tool_name, None)
+                    duration_ms = int((asyncio.get_event_loop().time() - start) * 1000) if start else None
+                    # For write_script, emit sub-LLM event before the tool_call_end
+                    if tool_name == "write_script":
+                        yield {"data": json.dumps({
+                            "type": "trace",
+                            "event": "sub_llm_call",
+                            "tool": "write_script",
+                            "label": "Script Writer LLM",
+                            "depth": 2,
+                            "duration_ms": duration_ms,
+                        })}
+                    yield {"data": json.dumps({
+                        "type": "trace",
+                        "event": "tool_call_end",
+                        "tool": tool_name,
+                        "duration_ms": duration_ms,
+                        "depth": 1,
+                    })}
+
         except Exception as e:
             logger.exception("Error during agent stream: %s", e)
             yield {"data": json.dumps({"error": str(e)})}
@@ -260,6 +396,12 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
         state = agent.get_state(config)
         for task in state.tasks or []:
             for intr in task.interrupts or []:
+                yield {"data": json.dumps({
+                    "type": "trace",
+                    "event": "interrupt",
+                    "tool": "write_script",
+                    "status": "awaiting_approval",
+                })}
                 yield {"data": json.dumps({
                     "interrupt": intr.value,
                     "thread_id": thread_id,
