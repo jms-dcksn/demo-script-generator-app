@@ -9,6 +9,7 @@ from langchain.agents.middleware import (
 from langchain.agents.middleware.types import AgentState as _BaseAgentState
 from langchain.tools import tool
 from langchain.messages import HumanMessage, SystemMessage
+from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -189,9 +190,9 @@ def tavily_search(query: str) -> str:
 
 def _generate_script(context: str, previous_version: str = "", feedback: str = "") -> str:
     """Call the script-writer LLM to generate or revise a script."""
-    llm = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o"),
-        api_key=os.getenv("OPENAI_API_KEY"),
+    llm = ChatAnthropic(
+        model=os.getenv("SCRIPT_WRITER_MODEL", "claude-sonnet-4-20250514"),
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
     user_content = f"Write a complete demo script based on this context:\n\n{context}"
     if previous_version:
@@ -231,7 +232,7 @@ def _build_tools() -> list:
 
 def get_agent():
     llm = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o"),
+        model=os.getenv("ORCHESTRATOR_MODEL", "gpt-4.1-mini"),
         api_key=os.getenv("OPENAI_API_KEY"),
         streaming=True,
     )
