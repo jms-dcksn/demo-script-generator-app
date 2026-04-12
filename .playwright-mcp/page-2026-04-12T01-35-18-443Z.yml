@@ -1,0 +1,73 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "← Back to app" [ref=e3] [cursor=pointer]:
+      - /url: /
+    - heading "How This Was Built" [level=1] [ref=e4]
+    - paragraph [ref=e5]: A look at the architecture, tech choices, and design thinking behind the Demo Script Generator.
+    - heading "What It Does" [level=2] [ref=e6]
+    - paragraph [ref=e7]: "This tool helps sales engineers and pre-sales professionals create structured demo scripts for their products. You provide product context -- a website URL, uploaded files, or a description -- and the LLM generates a script following proven demo frameworks: limbic openings, the 3 Key Ideas structure, and Tell-Show-Tell delivery."
+    - heading "Architecture" [level=2] [ref=e8]
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: Frontend
+        - generic [ref=e12]: Next.js 15 + React 19
+        - generic [ref=e13]: App Router, TypeScript, streaming SSE rendering
+      - generic [ref=e14]:
+        - generic [ref=e15]: Backend
+        - generic [ref=e16]: Python FastAPI
+        - generic [ref=e17]: SSE streaming, LangGraph agent orchestration
+      - generic [ref=e18]:
+        - generic [ref=e19]: AI Layer
+        - generic [ref=e20]: LangGraph + OpenAI + Anthropic
+        - generic [ref=e21]: Multi-model agent with human-in-the-loop approval
+      - generic [ref=e22]:
+        - generic [ref=e23]: Infrastructure
+        - generic [ref=e24]: Docker Compose
+        - generic [ref=e25]: Two-service stack, zero-database, stateless deployment
+    - heading "The Agent Architecture" [level=2] [ref=e26]
+    - paragraph [ref=e27]:
+      - text: "There are actually two LLMs at work here, not one -- and they're from different providers. The orchestrator agent runs on OpenAI's GPT-4.1-mini: fast, cheap, and good enough for routing decisions, asking discovery questions, and calling tools. When it has enough context, it calls a tool called"
+      - code [ref=e28]: write_script
+      - text: ", which hands off to Claude Sonnet -- Anthropic's model -- with its own system prompt specialized purely for script writing."
+    - paragraph [ref=e29]: "Why two models from two providers? Each model is matched to its job. The orchestrator does structured reasoning: parse context, decide what to ask next, decide when to search, decide when to write. 4.1-mini handles that well and keeps costs low. The script writer is the deliverable -- it needs to follow a framework (Tell-Show-Tell, limbic opening) while producing natural, compelling prose. Claude is measurably better at that kind of structured creative writing."
+    - paragraph [ref=e30]: Context window isolation matters too. The script writer gets a clean, focused prompt with just the structured context it needs -- no conversation history, no back-and-forth noise. It produces a better script because it isn't distracted by twelve messages of discovery chat.
+    - img [ref=e32]:
+      - generic [ref=e34]: User
+      - generic [ref=e36]: Orchestrator Agent
+      - generic [ref=e37]: GPT-4.1-mini (OpenAI)
+      - generic [ref=e39]: MIDDLEWARE
+      - generic [ref=e40]: Human-in-the-Loop | Tool Limit (3) | Model Limit (12)
+      - generic [ref=e44]: tavily_search
+      - generic [ref=e45]: Web research
+      - generic [ref=e47]: write_script
+      - generic [ref=e48]: HITL approval gate
+      - generic [ref=e50]: Script Writer LLM
+      - generic [ref=e51]: Claude Sonnet (Anthropic)
+    - heading "Middleware as Guardrails" [level=2] [ref=e52]
+    - paragraph [ref=e53]: "The agent uses three middleware layers, and each one exists because something can go wrong without it:"
+    - paragraph [ref=e54]:
+      - strong [ref=e55]: Human-in-the-loop middleware
+      - text: intercepts the
+      - code [ref=e56]: write_script
+      - text: tool call before it executes. You see what the agent is about to generate and can approve, edit the parameters, or reject with feedback. This isn't just a nice UX touch -- it means the expensive script generation LLM call only happens when you actually want it to.
+    - paragraph [ref=e57]:
+      - strong [ref=e58]: Tool call limit middleware
+      - text: caps
+      - code [ref=e59]: write_script
+      - text: at 3 calls per session. Without this, a confused agent could enter a revision loop -- writing, deciding it's not good enough, rewriting, repeat. Three is enough for an initial draft plus a couple of refinements.
+    - paragraph [ref=e60]:
+      - strong [ref=e61]: Model call limit middleware
+      - text: "is the bluntest instrument: 12 LLM calls per thread, then the agent wraps up. I'm funding this as a free demo, so runaway conversations would be a problem. This is the safety net that keeps my API bills from surprises."
+    - heading "Why SSE Over WebSockets" [level=2] [ref=e62]
+    - paragraph [ref=e63]: The data flow during generation is one-directional -- server streams tokens to the client. SSE handles that natively over standard HTTP, reconnects automatically, and doesn't fight proxies or load balancers. WebSockets would add complexity for no benefit here.
+    - heading "Why a Separate Python Backend" [level=2] [ref=e64]
+    - paragraph [ref=e65]: LangChain and LangGraph are Python-first. I could have squeezed the agent logic into Next.js API routes, but I'd be fighting the ecosystem instead of using it. Python handles orchestration; Next.js handles the UI. They talk over REST + SSE. Simple.
+    - heading "Other Design Choices" [level=2] [ref=e66]
+    - paragraph [ref=e67]: No auth, no database, no user accounts. This is a demo tool -- it should be frictionless. Rate limiting is IP-based to keep it fair without requiring signups. The discovery agent can run Tavily web searches on its own to research your product and industry, so you don't have to spoon-feed it everything.
+    - generic [ref=e68]:
+      - heading "About the Author" [level=2] [ref=e69]
+      - paragraph [ref=e70]: I'm James Dickson, a Principal AI Architect focused on agentic AI and enterprise automation. I built this to demonstrate how LLM-powered tools can support real pre-sales workflows -- not just chatbots, but structured, domain-specific assistants.
+      - paragraph [ref=e71]:
+        - link "LinkedIn" [ref=e72] [cursor=pointer]:
+          - /url: https://www.linkedin.com/in/jamescdickson/
+  - alert [ref=e73]

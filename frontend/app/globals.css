@@ -975,6 +975,20 @@ body {
   line-height: 1.5;
 }
 
+.agent-diagram {
+  margin: 20px 0 28px;
+  padding: 24px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.agent-diagram svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 .about-author {
   margin-top: 36px;
   padding-top: 24px;
