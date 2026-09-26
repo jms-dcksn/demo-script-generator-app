@@ -1,11 +1,13 @@
 import asyncio
 import json
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sse_starlette.sse import AppStatus
 
+from limits import LIMIT_DETAIL, reset_limits
 from main import app, fetch_url_text, _is_safe_url
 
 
@@ -20,6 +22,21 @@ def _reset_sse_state():
     AppStatus.should_exit_event = asyncio.Event()
 
 
+@pytest.fixture(autouse=True)
+def _reset_limits(monkeypatch):
+    """Keep IP counters isolated; force the in-memory store unless a test opts into Redis."""
+    import limits
+
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    orig_msg = limits.MAX_MESSAGES_PER_IP
+    orig_thr = limits.MAX_THREADS_PER_IP
+    reset_limits()
+    yield
+    reset_limits()
+    limits.MAX_MESSAGES_PER_IP = orig_msg
+    limits.MAX_THREADS_PER_IP = orig_thr
+
+
 def _make_ai_chunk(text: str):
     """Create a mock AIMessageChunk-like object."""
     from langchain_core.messages import AIMessageChunk
@@ -28,7 +45,7 @@ def _make_ai_chunk(text: str):
 
 def _mock_agent_stream(*texts: str):
     """Return a patched agent and async-generator yielding message chunks."""
-    chunks = [(_make_ai_chunk(t), {"langgraph_node": "agent"}) for t in texts]
+    chunks = [(_make_ai_chunk(t), {"langgraph_node": "model"}) for t in texts]
 
     async def astream(input_data, config, stream_mode="messages"):
         for c in chunks:
@@ -350,3 +367,189 @@ async def test_fetch_url_text_rejects_unsafe_url():
     """fetch_url_text raises ValueError for unsafe URLs."""
     with pytest.raises(ValueError, match="URL not allowed"):
         await fetch_url_text("http://localhost:8000")
+
+
+@pytest.mark.anyio
+async def test_usage_starts_at_full_allowance():
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        response = await ac.get("/api/usage")
+    body = response.json()
+    assert response.status_code == 200
+    assert body["used"] == 0
+    assert body["limit"] == 20
+    assert body["remaining"] == 20
+    assert body["threads_used"] == 0
+    assert body["threads_limit"] == 8
+    assert body["threads_remaining"] == 8
+
+
+@pytest.mark.anyio
+async def test_chat_429_at_message_cap():
+    import limits
+
+    limits.MAX_MESSAGES_PER_IP = 2
+    ctx, _ = _mock_agent_stream("OK")
+
+    with ctx:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            for _ in range(2):
+                ok = await ac.post(
+                    "/api/chat",
+                    json={
+                        "messages": [{"role": "user", "content": "Hi"}],
+                        "thread_id": "same-thread",
+                    },
+                )
+                assert ok.status_code == 200
+            limited = await ac.post(
+                "/api/chat",
+                json={
+                    "messages": [{"role": "user", "content": "Hi again"}],
+                    "thread_id": "same-thread",
+                },
+            )
+            usage = await ac.get("/api/usage")
+
+    assert limited.status_code == 429
+    assert limited.json()["detail"] == LIMIT_DETAIL
+    assert usage.json()["used"] == 2
+    assert usage.json()["remaining"] == 0
+
+
+@pytest.mark.anyio
+async def test_resume_does_not_count_toward_message_limit():
+    import limits
+
+    limits.MAX_MESSAGES_PER_IP = 1
+    ctx, _ = _mock_agent_stream("OK")
+
+    with ctx:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            first = await ac.post(
+                "/api/chat",
+                json={
+                    "messages": [{"role": "user", "content": "Hi"}],
+                    "thread_id": "hitl-thread",
+                },
+            )
+            resume = await ac.post(
+                "/api/chat",
+                json={
+                    "thread_id": "hitl-thread",
+                    "is_resume": True,
+                    "resume_payload": {"decisions": [{"type": "approve"}]},
+                },
+            )
+            usage = await ac.get("/api/usage")
+            blocked = await ac.post(
+                "/api/chat",
+                json={
+                    "messages": [{"role": "user", "content": "Another"}],
+                    "thread_id": "hitl-thread",
+                },
+            )
+
+    assert first.status_code == 200
+    assert resume.status_code == 200
+    assert usage.json()["used"] == 1
+    assert usage.json()["remaining"] == 0
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"] == LIMIT_DETAIL
+
+
+@pytest.mark.anyio
+async def test_new_thread_cap_allows_existing_thread():
+    import limits
+
+    limits.MAX_THREADS_PER_IP = 2
+    ctx, _ = _mock_agent_stream("OK")
+
+    with ctx:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            first = await ac.post(
+                "/api/chat",
+                json={"messages": [{"role": "user", "content": "Hi"}]},
+            )
+            second = await ac.post(
+                "/api/chat",
+                json={"messages": [{"role": "user", "content": "Hi"}]},
+            )
+            third_new = await ac.post(
+                "/api/chat",
+                json={"messages": [{"role": "user", "content": "Hi"}]},
+            )
+            continue_existing = await ac.post(
+                "/api/chat",
+                json={
+                    "messages": [{"role": "user", "content": "Continue"}],
+                    "thread_id": "already-known",
+                },
+            )
+            usage = await ac.get("/api/usage")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third_new.status_code == 429
+    assert third_new.json()["detail"] == LIMIT_DETAIL
+    assert continue_existing.status_code == 200
+    assert usage.json()["threads_used"] == 2
+    assert usage.json()["threads_remaining"] == 0
+    # Continuing an existing thread still counts as a message.
+    assert usage.json()["used"] == 3
+
+
+def test_in_memory_fallback_without_redis():
+    import limits
+
+    assert os.getenv("REDIS_URL") in (None, "")
+    assert limits._redis() is None
+    limits.increment_message("1.2.3.4")
+    limits.increment_thread("1.2.3.4")
+    assert limits.message_count("1.2.3.4") == 1
+    assert limits.thread_count("1.2.3.4") == 1
+    assert "1.2.3.4" in "".join(limits._mem)
+
+
+def test_redis_backend_sets_ttl_on_first_incr(monkeypatch):
+    import limits
+
+    class FakeRedis:
+        def __init__(self) -> None:
+            self.data: dict[str, int] = {}
+            self.ttls: dict[str, int] = {}
+
+        def get(self, key: str) -> str | None:
+            val = self.data.get(key)
+            return None if val is None else str(val)
+
+        def incr(self, key: str) -> int:
+            self.data[key] = self.data.get(key, 0) + 1
+            return self.data[key]
+
+        def expire(self, key: str, ttl: int) -> None:
+            self.ttls[key] = ttl
+
+    fake = FakeRedis()
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    reset_limits()
+    limits._redis_client = fake
+
+    assert limits.increment_message("10.0.0.1") == 1
+    assert limits.increment_message("10.0.0.1") == 2
+    assert limits.increment_thread("10.0.0.1") == 1
+    msg_key = limits._key("msg", "10.0.0.1")
+    thr_key = limits._key("thr", "10.0.0.1")
+    assert fake.data[msg_key] == 2
+    assert fake.data[thr_key] == 1
+    assert msg_key in fake.ttls
+    assert thr_key in fake.ttls
+    assert fake.ttls[msg_key] > 0
+    assert limits._mem == {}

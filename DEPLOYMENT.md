@@ -78,6 +78,26 @@ fly secrets set OPENAI_API_KEY=sk-your-actual-key
 
 You'll set `FRONTEND_ORIGIN` after deploying the frontend (step 2.3).
 
+### 1.4.1 Durable IP rate limits (Redis)
+
+The backend caps **20 messages** and **8 new threads** per client IP per **UTC calendar day** (override with `MAX_MESSAGES_PER_IP` / `MAX_THREADS_PER_IP`). Resume / HITL approval requests do not count toward the message cap. A thread is counted only when the backend mints a new `thread_id` (empty client value).
+
+Fly machines use `auto_stop_machines = 'stop'`. In-process counters die with the VM. Set `REDIS_URL` so limits survive idle stop and redeploy.
+
+**Recommended (hobby):** [Upstash Redis](https://upstash.com/) free serverless database. Create a database, copy the TLS URL, then:
+
+```bash
+fly secrets set REDIS_URL='rediss://default:TOKEN@REGION.upstash.io:6379'
+```
+
+Fly Redis / any Redis-compatible URL also works (`redis://` or `rediss://`). If `REDIS_URL` is unset, limits fall back to in-memory (local dev and pytest).
+
+Optional non-secret overrides in `fly.toml` `[env]` or via secrets:
+
+```bash
+fly secrets set MAX_MESSAGES_PER_IP=20 MAX_THREADS_PER_IP=8
+```
+
 ### 1.5 Deploy
 
 ```bash
@@ -196,6 +216,10 @@ Or set up continuous deployment with `fly deploy` in a GitHub Action.
 - Check logs: `fly logs`
 - Verify secrets are set: `fly secrets list`
 - Ensure the Dockerfile builds locally: `docker build ./backend`
+
+**Rate limits reset after idle or redeploy**
+- `REDIS_URL` is unset, so counters live only in the Fly process
+- Create an Upstash Redis database and `fly secrets set REDIS_URL=...`
 
 **Backend is slow to respond**
 - First request after idle may take a few seconds (machine auto-starts from stopped state)
