@@ -30,3 +30,9 @@ Items ordered by build priority (dependencies first).
 - [x] Create `.env.example` with `OPENAI_API_KEY` placeholder
 - [x] Create `docker-compose.yml` (frontend on port 3000, backend on port 8000, env passthrough)
 - [x] Create `start.sh` and `stop.sh` scripts for Mac
+
+## 6. Durable IP abuse / cost limits
+- [x] Per-IP message cap survives Fly auto-stop when `REDIS_URL` is set (in-memory fallback for local/pytest)
+- [x] Per-IP thread-create cap so refresh-minted `thread_id`s cannot open unbounded sessions
+- [x] `/api/usage` reports durable remaining messages plus additive thread fields
+- [x] Resume / HITL does not count toward the message cap

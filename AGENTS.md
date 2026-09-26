@@ -10,6 +10,8 @@
 - Tests need `_reset_sse_state` autouse fixture to reset `sse_starlette.AppStatus.should_exit_event` between tests (event loop binding issue on Python 3.14).
 - Use `starlette.datastructures.UploadFile` (not `fastapi.UploadFile`) when checking form data -- they are different classes.
 - `types-beautifulsoup4` is installed for mypy.
+- IP limits live in `limits.py`: Redis when `REDIS_URL` is set, otherwise in-process memory (UTC calendar day). Defaults: 20 messages and 8 new threads per IP. Resume does not increment messages; a new `thread_id` increments the thread counter.
+- Tests must call `reset_limits()` between cases (autouse fixture in `test_main.py`). Do not set `REDIS_URL` in pytest unless injecting a fake client.
 
 ## Frontend
 

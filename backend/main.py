@@ -5,7 +5,6 @@ import logging
 import mimetypes
 import os
 import uuid
-from collections import defaultdict
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,14 +19,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
 from agent import agent
+from limits import (
+    LIMIT_DETAIL,
+    at_message_limit,
+    at_thread_limit,
+    increment_message,
+    increment_thread,
+    usage_payload,
+)
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-
-# In-memory rate limiting by IP
-MAX_MESSAGES_PER_IP = int(os.getenv("MAX_MESSAGES_PER_IP", "20"))
-_ip_usage: dict[str, int] = defaultdict(int)
 
 
 def _client_ip(request: Request) -> str:
@@ -94,21 +97,18 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _limit_exceeded() -> JSONResponse:
+    return JSONResponse(status_code=429, content={"detail": LIMIT_DETAIL})
+
+
 @app.get("/api/usage")
 async def usage(request: Request) -> dict[str, int]:
-    ip = _client_ip(request)
-    used = _ip_usage[ip]
-    return {"used": used, "limit": MAX_MESSAGES_PER_IP, "remaining": max(0, MAX_MESSAGES_PER_IP - used)}
+    return usage_payload(_client_ip(request))
 
 
 @app.post("/api/chat", response_model=None)
 async def chat(request: Request) -> EventSourceResponse | JSONResponse:
     ip = _client_ip(request)
-    if _ip_usage[ip] >= MAX_MESSAGES_PER_IP:
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "You've reached the free demo limit. Thanks for trying it out!"},
-        )
     content_type = request.headers.get("content-type", "")
 
     uploaded_files: list[UploadFile] = []
@@ -137,14 +137,12 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
         is_resume = body.get("is_resume", False)
         resume_payload = body.get("resume_payload", None)
 
-    if not thread_id:
-        thread_id = uuid.uuid4().hex
-
-    config = {"configurable": {"thread_id": thread_id}}
-
-    # On resume, skip context building -- just resume the graph
+    # Resume never counts toward message or thread caps (HITL approval).
     if is_resume and resume_payload is not None:
-        # Don't count resume toward rate limit
+        if not thread_id:
+            thread_id = uuid.uuid4().hex
+        config = {"configurable": {"thread_id": thread_id}}
+
         async def resume_generator():
             _tool_start_times: dict[str, float] = {}
             _seen_model_ids: set[str] = set()
@@ -247,6 +245,17 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
 
         return EventSourceResponse(resume_generator())
 
+    if at_message_limit(ip):
+        return _limit_exceeded()
+
+    if not thread_id:
+        if at_thread_limit(ip):
+            return _limit_exceeded()
+        thread_id = uuid.uuid4().hex
+        increment_thread(ip)
+
+    config = {"configurable": {"thread_id": thread_id}}
+
     # -- Build context for the agent --
 
     # Fetch all URLs concurrently
@@ -309,7 +318,7 @@ async def chat(request: Request) -> EventSourceResponse | JSONResponse:
     else:
         input_messages.append(HumanMessage(content=user_text))
 
-    _ip_usage[ip] += 1
+    increment_message(ip)
 
     async def event_generator():
         # Send thread_id so frontend can track it
